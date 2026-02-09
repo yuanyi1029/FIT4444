@@ -112,7 +112,8 @@ if __name__ == "__main__":
     import numpy as np
     
     # 1. Setup
-    TEST_IMAGE = "dataset_hitl/unlabeled/(0)_LightFeather-2-_bmp_jpg.rf.8ac680312c062df4f2563f22d241e296.jpg"
+    # TEST_IMAGE = "dataset_hitl/unlabeled/(0)_LightFeather-2-_bmp_jpg.rf.8ac680312c062df4f2563f22d241e296.jpg"
+    TEST_IMAGE = "dataset_hitl/unlabeled/(1)_Beige-11-_bmp_jpg.rf.8ee90c21ea247658ed3f151fd0ac5db8.jpg"
     
     # 2. Load
     image_bgr = cv2.imread(TEST_IMAGE)
