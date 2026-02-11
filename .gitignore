@@ -1,5 +1,7 @@
 # Personal 
 dataset_hitl/
+dataset_generated/
+dataset_retrain/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

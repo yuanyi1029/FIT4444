@@ -1,11 +1,28 @@
-import gradio as gr
 from inference import * 
 from saliency import * 
 from generator import * 
+from setup import * 
+import gradio as gr
+import uuid
+from pathlib import Path
+import os 
+import time
 
-yolo_model, torch_model = load_model("models/bests.pt")
-generator = Generator()  
+MODEL_PATH = "models/bests.pt"
 ITEMS = 4 
+
+yolo_model, torch_model = load_model(MODEL_PATH)
+model_name = os.path.basename(MODEL_PATH)
+try: 
+    # metrics = test_model(yolo_model)
+    # accuracy = f"{metrics.get('metrics/accuracy_top1')}"
+    
+    # Temporary 
+    accuracy = "0.645962"
+except Exception as e: 
+    accuracy = "N/A" 
+
+generator = Generator()  
 
 # Prediction process 
 def predict_process(input_image): 
@@ -85,6 +102,13 @@ def generate_process(original_image, original_grade, editor_data, current_grade)
                     "type": f"synthetic_{label}"
                 })
 
+        elif np.any(is_red):
+            outputs.append({ 
+                "image": noisy_base_img, 
+                "label": current_grade,
+                "type": "synthetic_noise"
+            })
+             
         # Blue
         if np.any(is_blue):
             print("Blue brush detected (Logic not connected yet)")
@@ -132,38 +156,62 @@ def generate_process(original_image, original_grade, editor_data, current_grade)
     ui_updates.append(gr.update(visible=True))
     return ui_updates + [outputs]
 
-# Generate counterexamples process
-def save_process():
-    print("generate counterexamples process")
-    gr.Info("Save button clicked")
-
-# Generate counterexamples process
 def save_process(current_data, *current_labels):
-    print("generate counterexamples process")
+    print("save process")
+    BASE_PATH = Path("dataset_generated")
     
     if not current_data:
         gr.Warning("No data to save.")
         return current_data
 
-    # Iterate through the state and update the labels
     for i in range(len(current_data)):
         new_label = current_labels[i]
-        
-        if new_label is not None:
-            old_label = current_data[i]["label"]
-            current_data[i]["label"] = new_label
+        if new_label is None:
+            continue
             
-            # Print for verification
-            if old_label != new_label:
-                print(f"Item {i} ({current_data[i]['type']}): Grade updated from {old_label} -> {new_label}")
-            else:
-                print(f"Item {i} ({current_data[i]['type']}): Grade confirmed as {new_label}")
+        item = current_data[i]
+        item["label"] = new_label
+        
+        folder_type = "corrected" if item["type"] == "original" else "counterexamples"
+        target_dir = BASE_PATH / folder_type / str(new_label)
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-    gr.Info(f"State updated with {len(current_data)} verified items!")
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"{item['type']}_{unique_id}.jpg"
+        save_path = target_dir / filename
+
+        img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(save_path), img_bgr)
+
+        print(f"Saved {filename} to {target_dir}")
+
+    gr.Info(f"Successfully saved {len(current_data)} items to dataset_generated!")
     return current_data
 
+def finetune_process(): 
+    print("finetune process")
+    time.sleep(5)
+    prepare_dataset_retrain()
+
+def disable_button(text):
+    return gr.Button(text, interactive=False)
+
+def enable_button(text): 
+    return gr.Button(text, interactive=True)
+
 with gr.Blocks(title="CAIPI") as demo:
-    gr.Markdown("CAIPI Framework")
+
+    with gr.Row(): 
+        with gr.Column(scale=5): 
+            gr.Markdown(
+                f"""
+                # CAIPI Framework 
+                ### Loaded Model: `{model_name}` | Accuracy: **{accuracy}**
+                """
+            )
+
+        with gr.Column(scale=1): 
+            finetune_btn = gr.Button("Finetune Model", variant="primary")
 
     original_grd = gr.State()
     original_img = gr.State()
@@ -241,6 +289,21 @@ with gr.Blocks(title="CAIPI") as demo:
         fn=save_process, 
         inputs=[generated_st] + output_dds,
         outputs=[generated_st]            
+    )
+
+    finetune_btn.click(
+        # Use lambda to pass the specific string you want here
+        fn=lambda: disable_button("Finetuning..."), 
+        inputs=None,
+        outputs=finetune_btn 
+    ).then(
+        fn=finetune_process,
+        inputs=None,
+        outputs=None
+    ).then(
+        fn=lambda: enable_button("Finetune Model"),
+        inputs=None,
+        outputs=finetune_btn
     )
 
 if __name__ == "__main__": 

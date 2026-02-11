@@ -73,6 +73,12 @@ def predict_image(model, image_path):
         print(f"Prediction failed: {e}")
         return None
 
+def test_model(model): 
+    dataset_path = "C:/Users/wyuan/Projects/FIT4444/dataset_hitl/labeled"
+    metrics = model.val(data=dataset_path, split="test", plots=False, seed=42, deterministic=True)
+    
+    return metrics.results_dict
+
 if __name__ == "__main__":
     MODEL_PATH = 'models/bests.pt'  
     TEST_IMAGES_DIR = 'dataset_hitl/unlabeled' 
@@ -98,3 +104,8 @@ if __name__ == "__main__":
                 print(f"  Conf:  {result['confidence']:.2%}")
                 print(f"  Margin: {result['margin']:.4f}")
                 print("-" * 30)
+
+    # Some Tests
+    yolo_model, _= load_model("models/bests.pt")
+    results = test_model(yolo_model)
+    print(results)
