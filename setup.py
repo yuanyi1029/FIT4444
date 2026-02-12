@@ -137,8 +137,8 @@ def count_dataset(folder_path):
         print(f"{split.capitalize():<10} | {details}  (Total: {split_total})")
 
 if __name__ == "__main__": 
-    count_dataset("dataset_hitl/labeled")
-    # count_dataset("dataset_retrain")
+    # count_dataset("dataset_hitl/labeled")
+    count_dataset("dataset_retrain")
     # display_dataset_distribution()
     # prepare_dataset_retrain()
     # prepare_dataset_generated() 

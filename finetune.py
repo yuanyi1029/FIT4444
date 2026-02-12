@@ -20,7 +20,7 @@ def finetune_model(model, version_number):
     # Finetune
     results = model.train(
         data=str(BASE_DIR / "dataset_retrain"),
-        epochs=1,              
+        epochs=15,              
         patience=5,             
         imgsz=640,
         seed=42,
@@ -37,7 +37,8 @@ def finetune_model(model, version_number):
         project=str(LOGS_DIR),      
         name=f'finetune_v{version_number}', 
         exist_ok=True,
-        device=0 if torch.cuda.is_available() else 'cpu',
+        # device=0 if torch.cuda.is_available() else 'cpu',
+        device='cpu',
         verbose=True
     )
 

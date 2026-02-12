@@ -2,6 +2,8 @@ from inference import *
 from saliency import * 
 from generator import * 
 from setup import * 
+from finetune import *
+from testing import *
 import gradio as gr
 import uuid
 from pathlib import Path
@@ -192,6 +194,20 @@ def finetune_process():
     print("finetune process")
     time.sleep(5)
     prepare_dataset_retrain()
+    new_model, train_metrics = finetune_model(yolo_model, 2)
+    test_metrics = test_model(new_model)
+    new_acc = test_metrics.get('metrics/accuracy_top1') or test_metrics.get('top1_acc') or 0.0
+
+    return_string = f"""
+        # CAIPI Framework 
+        ### Loaded Model: `{model_name}_v2` | Accuracy: **{new_acc}**
+    """
+    print("===============================")
+    print(test_metrics)
+    print("===============================")
+    
+    return return_string
+
 
 def disable_button(text):
     return gr.Button(text, interactive=False)
@@ -203,7 +219,7 @@ with gr.Blocks(title="CAIPI") as demo:
 
     with gr.Row(): 
         with gr.Column(scale=5): 
-            gr.Markdown(
+            header_md = gr.Markdown(
                 f"""
                 # CAIPI Framework 
                 ### Loaded Model: `{model_name}` | Accuracy: **{accuracy}**
@@ -299,7 +315,7 @@ with gr.Blocks(title="CAIPI") as demo:
     ).then(
         fn=finetune_process,
         inputs=None,
-        outputs=None
+        outputs=header_md
     ).then(
         fn=lambda: enable_button("Finetune Model"),
         inputs=None,
