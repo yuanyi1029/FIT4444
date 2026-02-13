@@ -11,10 +11,30 @@ class HITLPipeline:
         self.torch_model = torch_model
         self.generator = Generator()
     
-    def process_prediction(self, image):
-        result = predict_image(self.yolo_model, image)
-        saliency_map, _ = generate_saliency(self.torch_model, image)
-        segmentation_mask = self.generator.get_mask(image)
+    def init_active_session(self, input_files):
+        queue = []
+        print(f"Analyzing {len(input_files)} images for active learning...")
+        
+        for file in input_files:
+            file_path = file.name
+            
+            result = predict_image(self.yolo_model, file_path)
+            
+            if result:
+                queue.append({
+                    "path": file_path,
+                    "margin": result['margin'],
+                    "class": result['class']
+                })
+                
+        # Sort the queue so the lowest margin (most confusing) is at index 0
+        sorted_queue = sorted(queue, key=lambda x: x['margin'])
+        return sorted_queue
+
+    def process_prediction(self, input_image):
+        result = predict_image(self.yolo_model, input_image)
+        saliency_map, _ = generate_saliency(self.torch_model, input_image)
+        segmentation_mask = self.generator.get_mask(input_image)
         
         return {
             'result': result,

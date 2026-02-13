@@ -25,7 +25,7 @@ def create_layout(callbacks):
         # --- Active Learning States ---
         session_queue = gr.State([])      
         current_filepath = gr.State("")   
-
+ 
         # ==========================================
         # ROW 1: Files Upload and Session Control
         # ==========================================
@@ -40,15 +40,17 @@ def create_layout(callbacks):
                 
                 with gr.Row():
                     start_session_btn = gr.Button("Start Active Session", variant="primary")
-                    next_img_btn = gr.Button("Skip to Next Image", variant="secondary", visible=False)
+                    # next_img_btn = gr.Button("Skip to Next Image", variant="secondary", visible=False)
                 
                 queue_status = gr.Markdown("**Queue:** 0 images ready", visible=False)
-
 
         # ==========================================
         # ROW 2: Prediction & Visualizations (Saliency & Mask)
         # ==========================================
+        gr.Markdown("## Model Predictions")
         with gr.Row(): 
+            with gr.Column(scale=1):
+                output_img = gr.Image(label="Grad-CAM Saliency Map", type="numpy", height=300)
             with gr.Column(scale=1):
                 output_map = gr.Image(label="Grad-CAM Saliency Map", type="numpy", height=300)
             with gr.Column(scale=1):
@@ -63,26 +65,20 @@ def create_layout(callbacks):
         # ==========================================
         with gr.Row():
             with gr.Column(visible=False) as editor_container: 
-                gr.Markdown("### Correction Tools")
-                
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        img_editor = gr.ImageEditor(
-                            type="numpy", 
-                            label="Masking Tool", 
-                            brush=gr.Brush(colors=BRUSH_COLORS, default_size=BRUSH_DEFAULT_SIZE), 
-                            interactive=True,
-                            height=400
-                        )
-                    
-                    with gr.Column(scale=1):
-                        grade_dd = gr.Dropdown(
-                            choices=["0", "1", "2"],
-                            label="Verify Grade",
-                            interactive=True
-                        )
-                        gen_btn = gr.Button("Generate Counterexamples", variant="stop") 
-
+                gr.Markdown("## Annotation Tools")
+                img_editor = gr.ImageEditor(
+                    type="numpy", 
+                    label="Masking Tool", 
+                    brush=gr.Brush(colors=BRUSH_COLORS, default_size=BRUSH_DEFAULT_SIZE), 
+                    interactive=True,
+                    height=400
+                )
+                grade_dd = gr.Dropdown(
+                    choices=["0", "1", "2"],
+                    label="Verify Grade",
+                    interactive=True
+                )
+                gen_btn = gr.Button("Generate Counterexamples", variant="stop") 
 
         # ==========================================
         # ROW 4: Counterexamples Placeholders
@@ -126,26 +122,24 @@ def create_layout(callbacks):
 
         # 1. Active Learning Initialization
         start_session_btn.click(
-            fn=callbacks.get("start_active_session"), 
+            fn=callbacks["session"], 
             inputs=[folder_uploader],
-            outputs=[session_queue, queue_status, next_img_btn] + predict_outputs
-        )
-        
-        # 2. Skip/Next Image
-        next_img_btn.click(
-            fn=callbacks.get("next_active_image"), 
-            inputs=[session_queue],
-            outputs=[session_queue, queue_status, next_img_btn] + predict_outputs
+            outputs=[
+                session_queue, 
+                queue_status,   
+                original_img, original_grd, output_txt, output_img, 
+                output_map, output_seg, editor_container, img_editor, grade_dd
+            ]
         )
 
-        # 3. Generate Counterexamples
+        # 2. Generate Counterexamples
         gen_btn.click(
             fn=callbacks.get("generate"), 
             inputs=[original_img, original_grd, img_editor, grade_dd],
             outputs=output_gen
         )
         
-        # 4. Save & Automatically Load Next Image
+        # 3. Save & Automatically Load Next Image
         save_btn.click(
             fn=callbacks.get("save"), 
             inputs=[generated_st] + output_dds,
@@ -153,10 +147,10 @@ def create_layout(callbacks):
         ).then( 
             fn=callbacks.get("next_active_image"), 
             inputs=[session_queue],
-            outputs=[session_queue, queue_status, next_img_btn] + predict_outputs
+            outputs=[session_queue, queue_status] + predict_outputs
         )
 
-        # 5. Finetune
+        # 4. Finetune
         finetune_btn.click(
             fn=lambda: gr.Button("Finetuning...", interactive=False), 
             inputs=None,
@@ -166,7 +160,7 @@ def create_layout(callbacks):
             inputs=None,
             outputs=header_md
         ).then(
-            fn=lambda: gr.Button("Finetune Model", interactive=False), 
+            fn=lambda: gr.Button("Finetune Model", interactive=True), 
             inputs=None,
             outputs=finetune_btn
         )

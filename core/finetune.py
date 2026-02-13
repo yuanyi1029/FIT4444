@@ -21,8 +21,8 @@ def finetune_model(model, version_number):
     # Finetune
     results = model.train(
         data=str(BASE_DIR / "dataset_retrain"),
-        # epochs=15,              
-        epochs=1,              
+        epochs=15,              
+        # epochs=1,              
         patience=FINETUNE_PATIENCE,             
         imgsz=640,
         seed=SEED,

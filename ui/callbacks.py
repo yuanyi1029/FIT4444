@@ -5,27 +5,56 @@ from config import *
 from core.pipeline import HITLPipeline
 import gradio as gr
 import numpy as np
+import cv2 
 
 def create_callbacks(pipeline: HITLPipeline):
 
+    def session_process(input_files):
+        if not input_files:
+            return gr.update(), gr.update(), gr.update(), *[gr.update()]*8 
+            
+        sorted_queue = pipeline.init_active_session(input_files)
+        
+        if not sorted_queue:
+            return gr.update(), gr.update(), gr.update(), *[gr.update()]*8
+
+        first_item = sorted_queue.pop(0)
+        remaining = len(sorted_queue)
+        
+        ui_updates = predict_process(first_item["path"])
+        
+        return (
+            sorted_queue,                                           
+            gr.update(value=f"**Queue:** {remaining} images left", visible=True),
+            *ui_updates                                            
+        )
+    
     def predict_process(input_image): 
         print("prediction process")
         if input_image is None: 
             return "Please upload an image."
         
+        if isinstance(input_image, str):
+            img_bgr = cv2.imread(input_image)
+            state_image = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        else:
+            state_image = input_image
+
         prediction_data = pipeline.process_prediction(input_image)
         result = prediction_data["result"]
 
         output_text = (
+            f"Filename: {result['filename']}\n"
             f"Prediction: {result['class']}\n"
             f"Confidence: {result['confidence']:.2%}\n"
             f"Margin:     {result['margin']:.4f}"
         )
 
         return (
-            input_image, 
+            state_image, 
             result["class"], 
             output_text, 
+            input_image,
             prediction_data["saliency"], 
             prediction_data["segmentation"], 
             gr.update(visible=True), 
@@ -37,7 +66,7 @@ def create_callbacks(pipeline: HITLPipeline):
         print("generate counterexamples process")
         outputs = pipeline.generate_counterexamples(
             original_image,
-            original_grade,
+            current_grade,
             editor_data 
         )
         
@@ -100,6 +129,7 @@ def create_callbacks(pipeline: HITLPipeline):
         """
     
     return { 
+        "session": session_process,
         "predict": predict_process,
         "generate": generate_process,
         "save": save_process,
