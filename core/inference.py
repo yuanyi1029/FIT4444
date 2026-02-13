@@ -1,3 +1,4 @@
+from config import * 
 from ultralytics import YOLO
 from pathlib import Path
 from PIL import Image
@@ -12,7 +13,7 @@ def load_model(model_path):
 
         # Pytorch model (for GradCam) 
         torch_model = copy.deepcopy(model.model)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device(DEVICE)
         torch_model.to(device)
         
         # Unfreeze gradients (Crucial for Grad-CAM!)
@@ -74,8 +75,16 @@ def predict_image(model, image_path):
         return None
 
 def test_model(model): 
-    dataset_path = "C:/Users/wyuan/Projects/FIT4444/dataset_hitl/labeled"
-    metrics = model.val(data=dataset_path, split="test", plots=False, seed=42, deterministic=True)
+    dataset_path = DATASET_HITL_LABELED
+    metrics = model.val(
+        data=dataset_path, 
+        split="test", 
+        plots=False, 
+        seed=SEED, 
+        deterministic=True,
+        # device=GPU_ID,
+        device="cpu"
+    )
     
     return metrics.results_dict
 
@@ -106,6 +115,7 @@ if __name__ == "__main__":
                 print("-" * 30)
 
     # Some Tests
-    yolo_model, _= load_model("models/bests.pt")
+    # yolo_model, _= load_model("models/bests.pt")
+    yolo_model, _= load_model("models/finetuned/bests_v1.pt")
     results = test_model(yolo_model)
     print(results)

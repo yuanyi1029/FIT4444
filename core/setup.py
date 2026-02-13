@@ -1,3 +1,4 @@
+from config import *
 from pathlib import Path
 import shutil
 import os
@@ -57,7 +58,7 @@ def display_dataset_distribution(root="dataset_hitl", classes=['0', '1', '2']):
 def prepare_dataset_generated():
     print("Preparing dataset_generated")
 
-    root = Path("dataset_generated")
+    root = DATASET_GENERATED
     sub_dirs = ["corrected", "counterexamples"]
 
     for sub in sub_dirs:
@@ -80,9 +81,9 @@ def prepare_dataset_generated():
 def prepare_dataset_retrain():
     print("Preparing dataset_retrain")
     
-    src_hitl = Path("dataset_hitl/labeled")
-    src_generated = Path("dataset_generated")
-    dest_retrain = Path("dataset_retrain")
+    src_hitl = DATASET_HITL_LABELED
+    src_generated = DATASET_GENERATED
+    dest_retrain = DATASET_RETRAIN
     
     if dest_retrain.exists():
         shutil.rmtree(dest_retrain)

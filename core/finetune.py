@@ -1,4 +1,5 @@
-from inference import * 
+from core.inference import * 
+from config import *
 from ultralytics import YOLO
 from pathlib import Path
 import shutil
@@ -20,10 +21,11 @@ def finetune_model(model, version_number):
     # Finetune
     results = model.train(
         data=str(BASE_DIR / "dataset_retrain"),
-        epochs=15,              
-        patience=5,             
+        # epochs=15,              
+        epochs=1,              
+        patience=FINETUNE_PATIENCE,             
         imgsz=640,
-        seed=42,
+        seed=SEED,
         deterministic=True,
         lr0=0.0001,           
         lrf=0.01,             
@@ -37,7 +39,7 @@ def finetune_model(model, version_number):
         project=str(LOGS_DIR),      
         name=f'finetune_v{version_number}', 
         exist_ok=True,
-        # device=0 if torch.cuda.is_available() else 'cpu',
+        # device=GPU_ID,
         device='cpu',
         verbose=True
     )
