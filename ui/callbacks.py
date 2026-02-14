@@ -114,6 +114,42 @@ def create_callbacks(pipeline: HITLPipeline):
         
         return current_data
 
+    def next_process(current_queue): 
+        print("next process")
+
+        if not current_queue:
+            gr.Info("Session Complete")
+            
+            predict_empties = [None, None, None, None, None, None, gr.update(visible=False), None, None]
+            row4_resets = [gr.update(visible=False), None, None] * ITEMS + [gr.update(visible=False), None]
+            
+            return (
+                current_queue, 
+                gr.update(value="**Queue:** 0 images left"), 
+                *predict_empties, 
+                *row4_resets
+            )
+
+        next_item = current_queue.pop(0)
+        remaining = len(current_queue)
+
+        ui_updates = predict_process(next_item["path"])
+
+        row4_resets = []
+        for _ in range(ITEMS):
+            row4_resets.append(gr.update(visible=False)) 
+            row4_resets.append(gr.update(value=None))   
+            row4_resets.append(gr.update(value=None))  
+        row4_resets.append(gr.update(visible=False))  
+        row4_resets.append(gr.update(value=None))    
+        
+        return (
+            current_queue,
+            gr.update(value=f"**Queue:** {remaining} images left"),
+            *ui_updates,
+            *row4_resets
+        )
+
     def finetune_process(): 
         print("finetune process")
         prepare_dataset_retrain()
@@ -133,5 +169,6 @@ def create_callbacks(pipeline: HITLPipeline):
         "predict": predict_process,
         "generate": generate_process,
         "save": save_process,
+        "next": next_process,
         "finetune": finetune_process,
     }

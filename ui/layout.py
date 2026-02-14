@@ -116,7 +116,7 @@ def create_layout(callbacks):
         
         # Predict outputs
         predict_outputs = [
-            original_img, original_grd, output_txt, output_map, 
+            original_img, original_grd, output_txt, output_map, output_img,
             output_seg, editor_container, img_editor, grade_dd
         ]
 
@@ -145,9 +145,9 @@ def create_layout(callbacks):
             inputs=[generated_st] + output_dds,
             outputs=[generated_st]            
         ).then( 
-            fn=callbacks.get("next_active_image"), 
+            fn=callbacks.get("next"), 
             inputs=[session_queue],
-            outputs=[session_queue, queue_status] + predict_outputs
+            outputs=[session_queue, queue_status] + predict_outputs + output_gen
         )
 
         # 4. Finetune
