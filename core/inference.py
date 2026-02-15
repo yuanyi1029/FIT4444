@@ -82,8 +82,8 @@ def test_model(model):
         plots=False, 
         seed=SEED, 
         deterministic=True,
-        # device=GPU_ID,
-        device="cpu"
+        device=GPU_ID,
+        # device="cpu"
     )
     
     return metrics.results_dict

@@ -39,8 +39,8 @@ def finetune_model(model, version_number):
         project=str(LOGS_DIR),      
         name=f'finetune_v{version_number}', 
         exist_ok=True,
-        # device=GPU_ID,
-        device='cpu',
+        device=GPU_ID,
+        # device='cpu',
         verbose=True
     )
 
