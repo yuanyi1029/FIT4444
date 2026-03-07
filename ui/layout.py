@@ -30,7 +30,7 @@ def create_layout(callbacks):
         
         # --- Active Learning States ---
         session_queue = gr.State([])      
-        current_filepath = gr.State("")   
+        original_pth = gr.State("")   
  
         # ==========================================
         # ROW 1: Files Upload and Session Control
@@ -122,22 +122,11 @@ def create_layout(callbacks):
         
         # Predict outputs
         predict_outputs = [
-            original_img, original_grd, output_txt, output_map, output_img,
-            output_seg, editor_container, img_editor, grade_dd
+            original_img, original_grd, original_pth, output_txt, output_img, 
+            output_map, output_seg, editor_container, img_editor, grade_dd
         ]
 
         # 1. Active Learning Initialization
-        # start_session_btn.click(
-        #     fn=callbacks["session"], 
-        #     inputs=[folder_uploader],
-        #     outputs=[
-        #         session_queue, 
-        #         queue_status,   
-        #         original_img, original_grd, output_txt, output_img, 
-        #         output_map, output_seg, editor_container, img_editor, grade_dd
-        #     ]
-        # )
-
         start_session_btn.click(
             fn=lambda: gr.Button("Starting Session...", interactive=False),
             inputs=None,
@@ -148,8 +137,8 @@ def create_layout(callbacks):
             outputs=[
                 session_queue, 
                 queue_status,   
-                original_img, original_grd, output_txt, output_img, 
-                output_map, output_seg, editor_container, img_editor, grade_dd
+                original_img, original_grd, original_pth, output_txt, output_img, 
+                output_map, output_seg, editor_container, img_editor, grade_dd 
             ]
         ).then(
             fn=lambda: gr.Button("Start Active Session", interactive=True),
@@ -158,18 +147,13 @@ def create_layout(callbacks):
         )
 
         # 2. Generate Counterexamples
-        # gen_btn.click(
-        #     fn=callbacks.get("generate"), 
-        #     inputs=[original_img, original_grd, img_editor, grade_dd],
-        #     outputs=output_gen
-        # )
         gen_btn.click(
             fn=lambda: gr.Button("Generating...", interactive=False),
             inputs=None,
             outputs=gen_btn
         ).then(
             fn=callbacks.get("generate"), 
-            inputs=[original_img, original_grd, img_editor, grade_dd],
+            inputs=[original_img, original_grd, original_pth, img_editor, grade_dd],
             outputs=output_gen
         ).then(
             fn=lambda: gr.Button("Generate Counterexamples", interactive=True),
@@ -178,16 +162,6 @@ def create_layout(callbacks):
         )
 
         # 3. Save & Automatically Load Next Image
-        # save_btn.click(
-        #     fn=callbacks.get("save"), 
-        #     inputs=[generated_st] + output_dds,
-        #     outputs=[generated_st]            
-        # ).then( 
-        #     fn=callbacks.get("next"), 
-        #     inputs=[session_queue],
-        #     outputs=[session_queue, queue_status] + predict_outputs + output_gen
-        # )
-        
         save_btn.click(
             fn=lambda: gr.Button("Saving...", interactive=False),
             inputs=None,

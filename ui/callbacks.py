@@ -11,12 +11,12 @@ def create_callbacks(pipeline: HITLPipeline):
 
     def session_process(input_files):
         if not input_files:
-            return gr.update(), gr.update(), gr.update(), *[gr.update()]*8 
+            return gr.update(), gr.update(), *[gr.update()]*10 
             
         sorted_queue = pipeline.init_active_session(input_files)
         
         if not sorted_queue:
-            return gr.update(), gr.update(), gr.update(), *[gr.update()]*8
+            return gr.update(), gr.update(), *[gr.update()]*10
 
         first_item = sorted_queue.pop(0)
         remaining = len(sorted_queue)
@@ -24,7 +24,7 @@ def create_callbacks(pipeline: HITLPipeline):
         ui_updates = predict_process(first_item["path"])
         
         return (
-            sorted_queue,                                           
+            sorted_queue,                                       
             gr.update(value=f"**Queue:** {remaining} images left", visible=True),
             *ui_updates                                            
         )
@@ -32,12 +32,14 @@ def create_callbacks(pipeline: HITLPipeline):
     def predict_process(input_image): 
         print("prediction process")
         if input_image is None: 
-            return "Please upload an image."
+            return tuple([gr.update()]*10)
         
+        clean_name = "unknown"
         if isinstance(input_image, str):
             img_bgr = cv2.imread(input_image)
             state_image = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        else:
+            clean_name = "-".join(Path(input_image).name.split("-")[:2])
+        else:   
             state_image = input_image
 
         prediction_data = pipeline.process_prediction(input_image)
@@ -53,19 +55,21 @@ def create_callbacks(pipeline: HITLPipeline):
         return (
             state_image, 
             result["class"], 
+            clean_name, 
             output_text, 
             input_image,
             prediction_data["saliency"], 
             prediction_data["segmentation"], 
             gr.update(visible=True), 
             gr.update(value=prediction_data["saliency"]), 
-            gr.update(value=result["class"])
+            gr.update(value=result["class"]),
         )
 
-    def generate_process(original_image, original_grade, editor_data, current_grade):
+    def generate_process(original_image, original_grade, original_path, editor_data, current_grade):
         print("generate counterexamples process")
         outputs = pipeline.generate_counterexamples(
             original_image,
+            original_path, 
             current_grade,
             editor_data 
         )

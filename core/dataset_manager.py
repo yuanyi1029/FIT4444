@@ -15,10 +15,28 @@ class DatasetManager:
         self.hf_token = os.getenv("HF_TOKEN")
         self.generated_repo = os.getenv("HF_DATASET_GENERATED")
         self.api = HfApi(token=self.hf_token)
-        
         # Local temporary folder for building uploads
         self.temp_upload_dir = Path("./temp_upload_generated")
+        
+        self.counter_file = Path("session_counter.txt")
+        self.count = self._load_count()
     
+    def _load_count(self):
+        """Reads the count from disk. Starts at 1 if no file exists."""
+        if self.counter_file.exists():
+            try:
+                with open(self.counter_file, "r") as f:
+                    return int(f.read().strip())
+            except ValueError:
+                return 1 
+        return 1
+
+    def _save_count(self):
+        """Saves the current count to disk."""
+        self.counter_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.counter_file, "w") as f:
+            f.write(str(self.count))
+
     def _init_upload_structure(self):
         """Create temporary folder structure for upload"""
         if self.temp_upload_dir.exists():
@@ -44,133 +62,111 @@ class DatasetManager:
             self._init_upload_structure()
 
     def save_corrections_to_hf(self, corrections_data, labels):
-        """
-        Save ONLY new corrections to HF dataset_generated using OS Temp directories.
-        """
         print("="*60)
-        print("SAVING NEW CORRECTIONS TO HF")
+        print("SAVING NEW CORRECTIONS LOCALLY")
         print("="*60)
         
         saved_count = 0
+        local_base_dir = Path("./dataset_generated")
         
-        # Create a secure temporary directory managed by the OS
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_upload_path = Path(temp_dir)
+        # Add ONLY the new corrections to the local folder
+        for i, item in enumerate(corrections_data):
+            label = labels[i]
+            if label is None:
+                continue
             
-            # Add ONLY the new corrections to the temp folder
-            for i, item in enumerate(corrections_data):
-                label = labels[i]
-                if label is None:
-                    continue
-                
-                # Determine folder based on type
-                if item["type"] == "original":
-                    folder_type = "corrected"
-                else:
-                    folder_type = "counterexamples"
-                
-                # Create target directory
-                target_dir = temp_upload_path / folder_type / str(label)
-                target_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Generate unique filename
-                unique_id = uuid.uuid4().hex[:8]
-                filename = f"{item['type']}_{unique_id}.jpg"
-                save_path = target_dir / filename
-                
-                # Save image
-                img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
-                cv2.imwrite(str(save_path), img_bgr)
-                
-                print(f"✓ Staged: {folder_type}/{label}/{filename}")
-                saved_count += 1
+            # Determine folder based on type
+            if item["type"][0] == "o":
+                folder_type = "corrected"
+            else:
+                folder_type = "counterexamples"
             
-            # Upload ONLY the new files to HF
-            if saved_count > 0:
-                print(f"\nUploading {saved_count} new corrections to HF...")
-                try:
-                    self.api.upload_folder(
-                        folder_path=str(temp_upload_path),
-                        repo_id=self.generated_repo,
-                        repo_type="dataset",
-                        token=self.hf_token,
-                        commit_message=f"Add {saved_count} new corrections via CAIPI"
-                    )
-                    print(f"✓ Successfully pushed to {self.generated_repo}")
-                except Exception as e:
-                    print(f"✗ Upload failed: {e}")
-                    return 0
-                
-            # Note: No 'finally' block needed! 
-            # When the 'with' block ends, Python safely deletes the temp folder automatically.
-
+            # Create target directory
+            target_dir = local_base_dir / folder_type / str(label)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique filename
+            unique_id = uuid.uuid4().hex[:4]
+            filename = f"{self.count}-{item['type']}-{unique_id}.jpg"
+            save_path = target_dir / filename
+            
+            # Save image
+            img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
+            cv2.imwrite(str(save_path), img_bgr)
+            
+            print(f"✓ Saved: {folder_type}/{label}/{filename}")
+            saved_count += 1
+        
+        if saved_count > 0:
+            print(f"\n✓ Successfully saved {saved_count} corrections to {local_base_dir}")
+            
         print("="*60)
+
+        self.count += 1  
+        self._save_count()
         return saved_count
-    
+
     # def save_corrections_to_hf(self, corrections_data, labels):
     #     """
-    #     Save corrections to HF dataset_generated
-    #     1. Download existing dataset
-    #     2. Add new corrections
-    #     3. Upload entire folder back to HF
+    #     Save ONLY new corrections to HF dataset_generated using OS Temp directories.
     #     """
     #     print("="*60)
-    #     print("SAVING CORRECTIONS TO HF")
+    #     print("SAVING NEW CORRECTIONS TO HF")
     #     print("="*60)
-        
-    #     # Step 1: Download existing
-    #     self._download_existing()
         
     #     saved_count = 0
         
-    #     # Step 2: Add new corrections
-    #     for i, item in enumerate(corrections_data):
-    #         label = labels[i]
-    #         if label is None:
-    #             continue
+    #     # Create a secure temporary directory managed by the OS
+    #     with tempfile.TemporaryDirectory() as temp_dir:
+    #         temp_upload_path = Path(temp_dir)
             
-    #         # Determine folder based on type
-    #         if item["type"] == "original":
-    #             folder_type = "corrected"
-    #         else:
-    #             folder_type = "counterexamples"
+    #         # Add ONLY the new corrections to the temp folder
+    #         for i, item in enumerate(corrections_data):
+    #             label = labels[i]
+    #             if label is None:
+    #                 continue
+                
+    #             # Determine folder based on type
+    #             if item["type"] == "o":
+    #                 folder_type = "corrected"
+    #             else:
+    #                 folder_type = "counterexamples"
+                
+    #             # Create target directory
+    #             target_dir = temp_upload_path / folder_type / str(label)
+    #             target_dir.mkdir(parents=True, exist_ok=True)
+                
+    #             # Generate unique filename
+    #             unique_id = uuid.uuid4().hex[:8]
+    #             filename = f"{item['type']}_{unique_id}.jpg"
+    #             save_path = target_dir / filename
+                
+    #             # Save image
+    #             img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
+    #             cv2.imwrite(str(save_path), img_bgr)
+                
+    #             print(f"✓ Staged: {folder_type}/{label}/{filename}")
+    #             saved_count += 1
             
-    #         # Create target directory
-    #         target_dir = self.temp_upload_dir / folder_type / str(label)
-    #         target_dir.mkdir(parents=True, exist_ok=True)
-            
-    #         # Generate unique filename
-    #         unique_id = uuid.uuid4().hex[:8]
-    #         filename = f"{item['type']}_{unique_id}.jpg"
-    #         save_path = target_dir / filename
-            
-    #         # Save image
-    #         img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
-    #         cv2.imwrite(str(save_path), img_bgr)
-            
-    #         print(f"✓ Staged: {folder_type}/{label}/{filename}")
-    #         saved_count += 1
-        
-    #     # Step 3: Upload to HF
-    #     if saved_count > 0:
-    #         print(f"\nUploading {saved_count} corrections to HF...")
-    #         try:
-    #             self.api.upload_folder(
-    #                 folder_path=str(self.temp_upload_dir),
-    #                 repo_id=self.generated_repo,
-    #                 repo_type="dataset",
-    #                 token=self.hf_token,
-    #                 commit_message=f"Add {saved_count} corrections"
-    #             )
-    #             print(f"✓ Successfully uploaded to {self.generated_repo}")
-    #         except Exception as e:
-    #             print(f"✗ Upload failed: {e}")
-    #             return 0
-    #         finally:
-    #             # Cleanup temp folder
-    #             if self.temp_upload_dir.exists():
-    #                 shutil.rmtree(self.temp_upload_dir)
-        
+    #         # Upload ONLY the new files to HF
+    #         if saved_count > 0:
+    #             print(f"\nUploading {saved_count} new corrections to HF...")
+    #             try:
+    #                 self.api.upload_folder(
+    #                     folder_path=str(temp_upload_path),
+    #                     repo_id=self.generated_repo,
+    #                     repo_type="dataset",
+    #                     token=self.hf_token,
+    #                     commit_message=f"Add {saved_count} new corrections via CAIPI"
+    #                 )
+    #                 print(f"✓ Successfully pushed to {self.generated_repo}")
+    #             except Exception as e:
+    #                 print(f"✗ Upload failed: {e}")
+    #                 return 0
+                
+    #         # Note: No 'finally' block needed! 
+    #         # When the 'with' block ends, Python safely deletes the temp folder automatically.
+
     #     print("="*60)
     #     return saved_count
     

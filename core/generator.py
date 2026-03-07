@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from ultralytics import FastSAM
 import random
+from rembg import remove
+from PIL import Image
 
 class Generator: 
 
@@ -9,34 +11,30 @@ class Generator:
         self.segment_model = FastSAM('FastSAM-s.pt') 
             
     def get_mask(self, image): 
-        # Inference
-        results = self.segment_model(image, imgsz=640, conf=0.6, iou=0.9)
-        
-        if results[0].masks is not None:
-            # Extract masks, select largest mask 
-            masks_data = results[0].masks.data.cpu().numpy()
-            
-            best_mask = max(masks_data, key=lambda m: m.sum())            
-            final_mask = (best_mask * 255).astype(np.uint8)
-            
-            return final_mask
-            
-        h, w = results[0].orig_shape
-        return np.zeros((h, w), dtype=np.uint8)
+        if isinstance(image, str):
+            loaded_image = Image.open(image)
+        else:
+            loaded_image = image
+
+        mask_pil = remove(loaded_image, only_mask=True)
+        final_mask = np.array(mask_pil)
+         
+        return final_mask
     
     def background_noise(self, image, mask):
-        if np.count_nonzero(mask) == 0:
-            return image 
-        
-        # Identfiy mask, generate noise 
         binary_mask = mask > 127
-        noise = np.random.randint(0, 256, image.shape, dtype=np.uint8)
-
-        # Apply noise 
+        
+        if not np.any(binary_mask):
+            return image
+            
         output = image.copy()
-        output[binary_mask] = noise[binary_mask]
+        target_shape = output[binary_mask].shape
+        
+        noise = np.random.normal(128, 80, target_shape)
+        output[binary_mask] = np.clip(noise, 0, 255).astype(np.uint8)
+        
         return output
-    
+
     def destructive_scatter(self, image, mask, clones=5): 
         if np.count_nonzero(mask) == 0: 
             return image
@@ -155,20 +153,3 @@ if __name__ == "__main__":
         print("✅ Test Complete!")
     else:
         print(f"Error loading image: {TEST_IMAGE}")
-
-# class Generator: 
-
-#     def __init__(self): 
-#         pass 
-
-#     def get_mask(self, image): 
-#         pass 
-    
-#     def background_noise(self, image, mask):
-#         pass 
-
-#     def destructive_scatter(self, image): 
-#         pass 
-
-#     def destructive_transform(self, image): 
-#         pass  

@@ -44,11 +44,13 @@ class HITLPipeline:
             'segmentation': segmentation_mask
         }
     
-    def generate_counterexamples(self, original_image, current_grade, editor_data):
+    def generate_counterexamples(self, original_image, original_path, current_grade, editor_data):
+        # clean_name = Path(filename).stem
+
         outputs = [{ 
             "image": original_image, 
             "label": current_grade,
-            "type": f"original"
+            "type": f"o-{original_path}"
         }]
              
         if editor_data is None or not editor_data["layers"]:
@@ -82,20 +84,20 @@ class HITLPipeline:
         # Green 
         if np.any(is_green):
             impurity_levels = [5, 15, 50]
-            labels = ["Low", "Medium", "High"]
+            labels = ["s", "m", "l"]
             for level, label in zip(impurity_levels, labels): 
                 scatter_img = self.generator.destructive_scatter(noisy_base_img, green_mask, clones=level)
                 outputs.append({ 
                     "image": scatter_img, 
                     "label": current_grade,
-                    "type": f"synthetic_{label}"
+                    "type": f"{label}-{original_path}"
                 })
 
         elif np.any(is_red):
             outputs.append({ 
                 "image": noisy_base_img, 
                 "label": current_grade,
-                "type": "synthetic_noise"
+                "type": f"noise-{original_path}"
             })
              
         # Blue
