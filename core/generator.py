@@ -4,6 +4,7 @@ from ultralytics import FastSAM
 import random
 from rembg import remove
 from PIL import Image
+import torch 
 
 class Generator: 
 
@@ -35,7 +36,7 @@ class Generator:
         
         return output
 
-    def destructive_scatter(self, image, mask, clones=5): 
+    def destructive_scatter(self, image, nest_mask, mask, clones=5): 
         if np.count_nonzero(mask) == 0: 
             return image
             
@@ -43,10 +44,10 @@ class Generator:
         h_img, w_img = image.shape[:2]
 
         # Obtain legal area, 10 pixels buffer area
-        nest_mask = self.get_mask(image)
-        valid_zone = cv2.erode(nest_mask, np.ones((10, 10), np.uint8), iterations=2)
-        
-        # Find countours
+        # nest_mask = self.get_mask(image)
+        binary_nest_mask = (nest_mask > 127).astype(np.uint8) * 255
+
+        valid_zone = cv2.erode(binary_nest_mask, np.ones((10, 10), np.uint8), iterations=2)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for contour in contours:
@@ -104,7 +105,125 @@ class Generator:
                     pass
                     
         return output
+    
+    def apply_clahe(self, image, mask, clip_limit=3.0): 
+        binary_mask = mask > 127
+        
+        if not np.any(binary_mask):
+            return image
+              
+        output = image.copy()
+        
+        # 1. Convert to LAB color space 
+        lab = cv2.cvtColor(output, cv2.COLOR_RGB2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        
+        # 2. Apply CLAHE strictly to the Lightness (L) channel
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+        cl = clahe.apply(l_channel)
+        
+        # 3. Merge channels back and convert to RGB
+        merged_lab = cv2.merge((cl, a_channel, b_channel))
+        enhanced_img = cv2.cvtColor(merged_lab, cv2.COLOR_LAB2RGB)
+        
+        # A. Create a "lighting map" by heavily blurring the L channel
+        local_bg = cv2.GaussianBlur(l_channel, (31, 31), 0)
+        
+        # B. Identify impurities (Lowered to 5 to catch more faint edges)
+        impurity_mask = l_channel < (local_bg - 5)
+        
+        # C. Intersect the user's brush mask WITH the impurity mask
+        # We convert it to uint8 (0 or 255) so OpenCV can process it
+        targeted_mask = (binary_mask & impurity_mask).astype(np.uint8) * 255
+        
+        # D. NEW: Thicken the impurities! (Morphological Dilation)
+        # A 3x3 kernel expands the dark spots slightly. 
+        # Change iterations=2 if you want them even thicker!
+        kernel = np.ones((3, 3), np.uint8)
+        thickened_mask = cv2.dilate(targeted_mask, kernel, iterations=1)
+        
+        # 4. Expand the 2D mask to 3D so it maps to RGB channels
+        mask_3d = (thickened_mask > 0)[:, :, np.newaxis]
+        
+        # 5. Blend: Apply enhanced pixels ONLY to the thickened dark spots
+        output = np.where(mask_3d, enhanced_img, output)
+        
+        return output
 
+    def remove_impurity(self, image, nest_mask, mask): 
+        if np.count_nonzero(mask) == 0: 
+            return image
+            
+        h_img, w_img = image.shape[:2]
+
+        # 1. Binarize masks
+        binary_mask = (mask > 127).astype(np.uint8) * 255
+        binary_nest_mask = (nest_mask > 127).astype(np.uint8) * 255
+
+        # 2. Define valid zone (Erode to stay strictly inside the nest)
+        valid_zone = cv2.erode(binary_nest_mask, np.ones((7, 7), np.uint8), iterations=1)
+        valid_zone[binary_mask > 0] = 0 
+
+        contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        final_output = image.copy()
+
+        successfully_removed = 0 
+
+        for contour in contours:
+            if cv2.contourArea(contour) < 10: 
+                continue
+            
+            # --- Extract Impurity Info ---
+            x, y, w, h = cv2.boundingRect(contour)
+            source_mask = binary_mask[y:y+h, x:x+w]
+            
+            patch_mask = np.zeros((h, w), dtype=np.uint8)
+            patch_mask[source_mask > 0] = 255
+            
+            # ==========================================
+            # ERASE (Texture Harvesting)
+            # ==========================================
+            healed = False
+            heal_attempts = 0
+            
+            while not healed and heal_attempts < 100:
+                heal_attempts += 1
+                
+                # Pick a random clean spot to harvest fibers from
+                hx = np.random.randint(0, w_img - w)
+                hy = np.random.randint(0, h_img - h)
+                
+                zone_slice = valid_zone[hy:hy+h, hx:hx+w]
+                if zone_slice.shape != patch_mask.shape:
+                    continue
+                if np.sum((patch_mask > 0) & (zone_slice == 0)) > 0: 
+                    continue
+
+                try:
+                    # Harvest the clean texture
+                    clean_roi = image[hy:hy+h, hx:hx+w]
+                    
+                    # NORMAL_CLONE perfectly stitches the clean fibers over the impurity
+                    final_output = cv2.seamlessClone(
+                        clean_roi, final_output, patch_mask, 
+                        (x + w//2, y + h//2), cv2.NORMAL_CLONE
+                    )
+                    healed = True
+                    successfully_removed += 1
+                except Exception:
+                    pass
+
+            # Fallback to inpainting ONLY if harvesting fails on tiny nests
+            if not healed:
+                inpaint_mask = np.zeros_like(binary_mask)
+                inpaint_mask[y:y+h, x:x+w] = patch_mask
+                inpaint_mask = cv2.dilate(inpaint_mask, np.ones((5, 5), np.uint8), iterations=1)
+                final_output = cv2.inpaint(final_output, inpaint_mask, 3, cv2.INPAINT_TELEA)
+                successfully_removed += 1
+
+        print(f"\nSummary: Successfully removed {successfully_removed}/{len(contours)} impurities")
+        return final_output
+    
 if __name__ == "__main__": 
     import matplotlib.pyplot as plt
     import cv2

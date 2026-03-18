@@ -61,29 +61,67 @@ class DatasetManager:
             print(f"⚠ No existing dataset found (first upload): {e}")
             self._init_upload_structure()
 
+    # def save_corrections_to_hf(self, corrections_data, labels):
+    #     print("="*60)
+    #     print("SAVING NEW CORRECTIONS LOCALLY")
+    #     print("="*60)
+        
+    #     saved_count = 0
+    #     local_base_dir = Path("./dataset_generated")
+        
+    #     # Add ONLY the new corrections to the local folder
+    #     for i, item in enumerate(corrections_data):
+    #         label = labels[i]
+    #         if label is None:
+    #             continue
+            
+    #         # Determine folder based on type
+    #         if item["type"][0] == "o":
+    #             folder_type = "corrected"
+    #         else:
+    #             folder_type = "counterexamples"
+            
+    #         # Create target directory
+    #         target_dir = local_base_dir / folder_type / str(label)
+    #         target_dir.mkdir(parents=True, exist_ok=True)
+            
+    #         # Generate unique filename
+    #         unique_id = uuid.uuid4().hex[:4]
+    #         filename = f"{self.count}-{item['type']}-{unique_id}.jpg"
+    #         save_path = target_dir / filename
+            
+    #         # Save image
+    #         img_bgr = cv2.cvtColor(item["image"], cv2.COLOR_RGB2BGR)
+    #         cv2.imwrite(str(save_path), img_bgr)
+            
+    #         print(f"✓ Saved: {folder_type}/{label}/{filename}")
+    #         saved_count += 1
+        
+    #     if saved_count > 0:
+    #         print(f"\n✓ Successfully saved {saved_count} corrections to {local_base_dir}")
+            
+    #     print("="*60)
+
+    #     self.count += 1  
+    #     self._save_count()
+    #     return saved_count
+
     def save_corrections_to_hf(self, corrections_data, labels):
-        print("="*60)
+        print("="*60)   
         print("SAVING NEW CORRECTIONS LOCALLY")
         print("="*60)
         
         saved_count = 0
         local_base_dir = Path("./dataset_generated")
         
-        # Add ONLY the new corrections to the local folder
         for i, item in enumerate(corrections_data):
             label = labels[i]
             if label is None:
                 continue
             
-            # Determine folder based on type
-            if item["type"][0] == "o":
-                folder_type = "corrected"
-            else:
-                folder_type = "counterexamples"
-            
-            # Create target directory
+            folder_type = item.get("folder", "uncategorized") 
             target_dir = local_base_dir / folder_type / str(label)
-            target_dir.mkdir(parents=True, exist_ok=True)
+            target_dir.mkdir(parents=True, exist_ok=True) 
             
             # Generate unique filename
             unique_id = uuid.uuid4().hex[:4]

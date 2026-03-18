@@ -6,6 +6,8 @@ from core.pipeline import HITLPipeline
 import gradio as gr
 import numpy as np
 import cv2 
+from pathlib import Path
+import os
 
 def create_callbacks(pipeline: HITLPipeline):
 
@@ -68,10 +70,7 @@ def create_callbacks(pipeline: HITLPipeline):
     def generate_process(original_image, original_grade, original_path, editor_data, current_grade):
         print("generate counterexamples process")
         outputs = pipeline.generate_counterexamples(
-            original_image,
-            original_path, 
-            current_grade,
-            editor_data 
+            original_image, original_path, current_grade, editor_data 
         )
         
         # Annotation Check
@@ -90,30 +89,19 @@ def create_callbacks(pipeline: HITLPipeline):
         elif not grade_changed and is_annotated:
             gr.Info("Right for Wrong Reasons (Explanation Correction)")
 
-        ui_updates = []
+        # Simply return the list of output dictionaries to update the State
+        return outputs 
 
-        for i in range(ITEMS):
-            if i < len(outputs):
-                item = outputs[i]
-                ui_updates.append(gr.update(visible=True))       
-                ui_updates.append(gr.update(value=item["image"])) 
-                is_interactive = (i > 0)
-                ui_updates.append(gr.update(value=item["label"], interactive=is_interactive, label=f"Grade ({item['type']})")) 
-            else:
-                ui_updates.append(gr.update(visible=False))
-                ui_updates.append(gr.update(value=None))
-                ui_updates.append(gr.update(value=None))
-
-        ui_updates.append(gr.update(visible=True))
-        return ui_updates + [outputs]
-
-    def save_process(current_data, *current_labels):
+    def save_process(current_data):
         print("save process")        
         if not current_data:
             gr.Warning("No data to save.")
             return current_data
 
-        saved_count = pipeline.save_corrections(current_data, current_labels)
+        # Extract the labels dynamically from the State data
+        labels = [item["label"] for item in current_data]
+
+        saved_count = pipeline.save_corrections(current_data, labels)
         gr.Info(f"Successfully saved {saved_count} items to dataset_generated!")
         
         return current_data
@@ -124,34 +112,28 @@ def create_callbacks(pipeline: HITLPipeline):
         if not current_queue:
             gr.Info("Session Complete")
             
-            predict_empties = [None, None, None, None, None, None, gr.update(visible=False), None, None]
-            row4_resets = [gr.update(visible=False), None, None] * ITEMS + [gr.update(visible=False), None]
+            predict_empties = [
+                None, None, None, None, None, 
+                None, None, gr.update(visible=False), None, None
+            ]
             
             return (
                 current_queue, 
                 gr.update(value="**Queue:** 0 images left"), 
                 *predict_empties, 
-                *row4_resets
+                [] # Return empty list to clear generated_st
             )
 
         next_item = current_queue.pop(0)
         remaining = len(current_queue)
 
         ui_updates = predict_process(next_item["path"])
-
-        row4_resets = []
-        for _ in range(ITEMS):
-            row4_resets.append(gr.update(visible=False)) 
-            row4_resets.append(gr.update(value=None))   
-            row4_resets.append(gr.update(value=None))  
-        row4_resets.append(gr.update(visible=False))  
-        row4_resets.append(gr.update(value=None))    
         
         return (
             current_queue,
             gr.update(value=f"**Queue:** {remaining} images left"),
             *ui_updates,
-            *row4_resets
+            [] # Return empty list to clear generated_st for the next image
         )
 
     def finetune_process(): 
@@ -166,7 +148,6 @@ def create_callbacks(pipeline: HITLPipeline):
         new_f1 = test_metrics.get("macro_f1")
 
         pipeline.yolo_model = new_model
-
         print("finetuning complete")
 
         return f"""

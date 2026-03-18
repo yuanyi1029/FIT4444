@@ -26,7 +26,7 @@ def create_layout(callbacks):
         # --- Global States ---
         original_grd = gr.State()
         original_img = gr.State()
-        generated_st = gr.State()
+        generated_st = gr.State([]) # Initialize as empty list
         
         # --- Active Learning States ---
         session_queue = gr.State([])      
@@ -46,14 +46,19 @@ def create_layout(callbacks):
                 
                 with gr.Row():
                     start_session_btn = gr.Button("Start Active Session", variant="primary")
-                    # next_img_btn = gr.Button("Skip to Next Image", variant="secondary", visible=False)
                 
                 queue_status = gr.Markdown("**Queue:** 0 images ready", visible=False)
 
         # ==========================================
-        # ROW 2: Prediction & Visualizations (Saliency & Mask)
+        # ROW 2: Prediction & Visualizations 
         # ==========================================
-        gr.Markdown("## Model Predictions")
+        # gr.Markdown("## Model Predictions")
+        with gr.Row():
+            with gr.Column(scale=5):
+                gr.Markdown("## Model Predictions")
+            with gr.Column(scale=1):
+                skip_btn = gr.Button("Skip Image", variant="secondary")
+
         with gr.Row(): 
             with gr.Column(scale=1):
                 output_img = gr.Image(label="Grad-CAM Saliency Map", type="numpy", height=300)
@@ -65,7 +70,6 @@ def create_layout(callbacks):
         with gr.Row():
             output_txt = gr.Textbox(label="Model Prediction", lines=4)
             
-
         # ==========================================
         # ROW 3: Image Annotation (Correction Tools)
         # ==========================================
@@ -86,45 +90,61 @@ def create_layout(callbacks):
                 )
                 gen_btn = gr.Button("Generate Counterexamples", variant="stop") 
 
-        # ==========================================
-        # ROW 4: Counterexamples Placeholders
-        # ==========================================
-        output_cols = []
-        output_imgs = []
-        output_dds = []
-
-        with gr.Row(): 
-            for i in range(ITEMS): 
-                with gr.Column(visible=False) as col: 
-                    img = gr.Image(label=f"Image {i}", interactive=False, height=200)
-                    dd = gr.Dropdown(choices=["0", "1", "2"], label="Grade", interactive=True)
-                    
-                    output_cols.append(col)
-                    output_imgs.append(img)
-                    output_dds.append(dd)
-                    
-        with gr.Row():
-            save_btn = gr.Button("Save & Next", variant="primary", visible=False)
-
-        # ==========================================
-        # EVENT WIRING (Connecting UI to Logic)
-        # ==========================================
-
-        # Helper arrays for outputs
-        output_gen = []
-        for i in range(ITEMS):
-            output_gen.append(output_cols[i])
-            output_gen.append(output_imgs[i])
-            output_gen.append(output_dds[i])
-        
-        output_gen.append(save_btn) 
-        output_gen.append(generated_st) 
-        
-        # Predict outputs
+        # We group these outputs now so they can be referenced inside the render block
         predict_outputs = [
             original_img, original_grd, original_pth, output_txt, output_img, 
             output_map, output_seg, editor_container, img_editor, grade_dd
         ]
+
+        # ==========================================
+        # ROW 4: Dynamic Counterexamples via Rendering
+        # ==========================================
+        @gr.render(inputs=generated_st)
+        def render_counterexamples(data):
+            if not data:
+                return # Renders nothing (hiding the row) if state is empty
+
+            with gr.Row(): 
+                for i, item in enumerate(data): 
+                    with gr.Column(): 
+                        img = gr.Image(value=item["image"], label=f"Image {i}", interactive=False, height=200)
+                        dd = gr.Dropdown(
+                            choices=["0", "1", "2"], 
+                            value=item["label"], 
+                            label=f"Grade ({item['type']})", 
+                            interactive=True
+                        )
+                        
+                        # When a dropdown changes, we update the specific item in the state
+                        def update_grade(new_grade, index=i):
+                            new_data = list(data) # List copy forces state change recognition
+                            new_data[index]["label"] = new_grade
+                            return new_data
+
+                        dd.change(fn=update_grade, inputs=[dd], outputs=[generated_st])
+                        
+            with gr.Row():
+                save_btn = gr.Button("Save & Next", variant="primary")
+                
+                # The save button is dynamically bound whenever the UI rebuilds
+                save_btn.click(
+                    fn=lambda: gr.Button("Saving...", interactive=False),
+                    inputs=None,
+                    outputs=save_btn, 
+                    queue=False
+                ).then(
+                    fn=callbacks.get("save"), 
+                    inputs=[generated_st],
+                    outputs=[generated_st]            
+                ).then( 
+                    fn=callbacks.get("next"), 
+                    inputs=[session_queue],
+                    outputs=[session_queue, queue_status] + predict_outputs + [generated_st]
+                )
+
+        # ==========================================
+        # EVENT WIRING (Connecting static UI to Logic)
+        # ==========================================
 
         # 1. Active Learning Initialization
         start_session_btn.click(
@@ -137,8 +157,7 @@ def create_layout(callbacks):
             outputs=[
                 session_queue, 
                 queue_status,   
-                original_img, original_grd, original_pth, output_txt, output_img, 
-                output_map, output_seg, editor_container, img_editor, grade_dd 
+                *predict_outputs 
             ]
         ).then(
             fn=lambda: gr.Button("Start Active Session", interactive=True),
@@ -154,35 +173,14 @@ def create_layout(callbacks):
         ).then(
             fn=callbacks.get("generate"), 
             inputs=[original_img, original_grd, original_pth, img_editor, grade_dd],
-            outputs=output_gen
+            outputs=[generated_st]
         ).then(
             fn=lambda: gr.Button("Generate Counterexamples", interactive=True),
             inputs=None,
             outputs=gen_btn
         )
 
-        # 3. Save & Automatically Load Next Image
-        save_btn.click(
-            fn=lambda: gr.Button("Saving...", interactive=False),
-            inputs=None,
-            outputs=save_btn, 
-            queue=False
-        ).then(
-            fn=callbacks.get("save"), 
-            inputs=[generated_st] + output_dds,
-            outputs=[generated_st]            
-        ).then( 
-            fn=callbacks.get("next"), 
-            inputs=[session_queue],
-            outputs=[session_queue, queue_status] + predict_outputs + output_gen
-        ).then(
-            fn=lambda: gr.Button("Save & Next", interactive=True),
-            inputs=None,
-            outputs=save_btn, 
-            queue=False
-        )
-
-        # 4. Finetune
+        # 3. Finetune
         finetune_btn.click(
             fn=lambda: gr.Button("Finetuning...", interactive=False), 
             inputs=None,
@@ -197,7 +195,7 @@ def create_layout(callbacks):
             outputs=finetune_btn
         )
 
-        # 5. Clear Dataset 
+        # 4. Clear Dataset 
         clear_btn.click(
             fn=lambda: gr.Button("Clearing...", interactive=False),
             inputs=None,
@@ -210,6 +208,22 @@ def create_layout(callbacks):
             fn=lambda: gr.Button("Clear Dataset", interactive=True),
             inputs=None,
             outputs=clear_btn
+        )
+
+        skip_btn.click(
+            fn=lambda: gr.Button("Skipping...", interactive=False),
+            inputs=None,
+            outputs=skip_btn,
+            queue=False
+        ).then(
+            fn=callbacks.get("next"), 
+            inputs=[session_queue],
+            outputs=[session_queue, queue_status] + predict_outputs + [generated_st]
+        ).then(
+            fn=lambda: gr.Button("Skip Image", interactive=True),
+            inputs=None,
+            outputs=skip_btn,
+            queue=False
         )
 
     return demo
