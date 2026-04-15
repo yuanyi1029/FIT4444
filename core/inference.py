@@ -120,40 +120,4 @@ def test_model(model):
     }
     
 if __name__ == "__main__":
-    MODEL_PATH = 'models/bests.pt'  
-    TEST_IMAGES_DIR = 'dataset_hitl/unlabeled' 
-
-    # 2. Load Model
-    model, _ = load_model(MODEL_PATH)
-
-    # if model:
-    #     # 3. Find images
-    #     image_folder = Path(TEST_IMAGES_DIR)
-    #     image_files = list(image_folder.glob('*.jpg')) + list(image_folder.glob('*.png'))
-        
-    #     print(f"\nFound {len(image_files)} images. Testing the first 5...\n")
-
-    #     # 4. Run Loop
-    #     for img_path in image_files[:5]:
-    #         result = predict_image(model, img_path)
-            
-    #         if result:
-    #             print(f"Image: {result['filename']}")
-    #             print(f"Path: {result['filepath']}")
-    #             print(f"  Class: {result['class']}")
-    #             print(f"  Conf:  {result['confidence']:.2%}")
-    #             print(f"  Margin: {result['margin']:.4f}")
-    #             print("-" * 30)
-
-    # Some Tests
-    yolo_model, _= load_model("models/bests.pt")
-    # yolo_model, _= load_model("models/finetuned/bests_v1.pt")
-    results = test_model(yolo_model)
-
-    print(results)
-    print(results["accuracy"])
-    print(results["macro_precision"])
-    print(results["macro_recall"])
-    print(results["macro_f1"])
-    print(results["confusion_matrix"])
-    print(results["raw_metrics"])
+    pass

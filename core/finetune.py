@@ -64,12 +64,4 @@ def finetune_model(model, version_number):
     return YOLO(str(versioned_model_path)), results
 
 if __name__ == "__main__":
-    MODEL_PATH = 'models/bests.pt'  
-    torch_model, _ = load_model(MODEL_PATH)
-    _, results = finetune_model(torch_model, 1)
-    print(results)
-    print(results.results_dict)
-
-    # MODEL_PATH = 'models/temp_for_finetuning.pt'  
-    # torch_model, _ = load_model(MODEL_PATH)
-    # print(test_model(torch_model))
+    pass

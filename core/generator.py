@@ -1,16 +1,18 @@
 import numpy as np
 import cv2
-from ultralytics import FastSAM
+from ultralytics import FastSAM, SAM
 import random
 from rembg import remove
 from PIL import Image
 import torch 
+from tqdm import tqdm
+from config import * 
 
 class Generator: 
 
     def __init__(self): 
-        self.segment_model = FastSAM('FastSAM-s.pt') 
-            
+        self.segment_model = FastSAM('FastSAM-s.pt')
+
     def get_mask(self, image): 
         if isinstance(image, str):
             loaded_image = Image.open(image)
@@ -147,83 +149,129 @@ class Generator:
         
         # 5. Blend: Apply enhanced pixels ONLY to the thickened dark spots
         output = np.where(mask_3d, enhanced_img, output)
-        
+         
         return output
+    
+    def remove_impurity(self, image, nest_mask, mask):
+        if np.count_nonzero(mask) == 0:
+            return image 
 
-    def remove_impurity(self, image, nest_mask, mask): 
-        if np.count_nonzero(mask) == 0: 
-            return image
-            
         h_img, w_img = image.shape[:2]
 
-        # 1. Binarize masks
-        binary_mask = (mask > 127).astype(np.uint8) * 255
-        binary_nest_mask = (nest_mask > 127).astype(np.uint8) * 255
+        binary_mask       = (mask > 127).astype(np.uint8) * 255
+        binary_nest_mask  = (nest_mask > 127).astype(np.uint8) * 255
 
-        # 2. Define valid zone (Erode to stay strictly inside the nest)
         valid_zone = cv2.erode(binary_nest_mask, np.ones((7, 7), np.uint8), iterations=1)
-        valid_zone[binary_mask > 0] = 0 
+        valid_zone[binary_mask > 0] = 0
 
         contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         final_output = image.copy()
+        successfully_removed = 0
 
-        successfully_removed = 0 
+        # Sharpening kernel — mild, preserves structure without ringing
+        SHARPEN_KERNEL = np.array([[ 0,  -0.5,  0],
+                                    [-0.5,  3, -0.5],
+                                    [ 0,  -0.5,  0]], dtype=np.float32)
+
+        NUM_CANDIDATES   = 25   # how many clean patches to evaluate before picking the best
+        MAX_ATTEMPTS     = 400  # upper bound on random sampling tries
 
         for contour in contours:
-            if cv2.contourArea(contour) < 10: 
+            if cv2.contourArea(contour) < 10:
                 continue
-            
-            # --- Extract Impurity Info ---
+
             x, y, w, h = cv2.boundingRect(contour)
+
+            # --- Build patch mask & dilate for stronger edge coverage ---
             source_mask = binary_mask[y:y+h, x:x+w]
-            
-            patch_mask = np.zeros((h, w), dtype=np.uint8)
+            patch_mask  = np.zeros((h, w), dtype=np.uint8)
             patch_mask[source_mask > 0] = 255
-            
+            patch_mask = cv2.dilate(patch_mask, np.ones((3, 3), np.uint8), iterations=2)
+
+            # Reference: what the border of this region looks like right now
+            ref_region   = final_output[y:y+h, x:x+w]
+            border_mask  = patch_mask == 0          # pixels OUTSIDE the impurity (the seam zone)
+            has_border   = border_mask.any()
+
             # ==========================================
-            # ERASE (Texture Harvesting)
+            # BEST-MATCH PATCH HARVESTING
             # ==========================================
-            healed = False
-            heal_attempts = 0
-            
-            while not healed and heal_attempts < 100:
-                heal_attempts += 1
-                
-                # Pick a random clean spot to harvest fibers from
+            best_score  = float('inf')
+            best_roi    = None
+            candidates  = 0
+            attempts    = 0
+
+            while candidates < NUM_CANDIDATES and attempts < MAX_ATTEMPTS:
+                attempts += 1
+
                 hx = np.random.randint(0, w_img - w)
                 hy = np.random.randint(0, h_img - h)
-                
+
                 zone_slice = valid_zone[hy:hy+h, hx:hx+w]
                 if zone_slice.shape != patch_mask.shape:
                     continue
-                if np.sum((patch_mask > 0) & (zone_slice == 0)) > 0: 
+                # Reject if any impurity pixel in the patch falls outside the valid zone
+                if np.any((patch_mask > 0) & (zone_slice == 0)):
                     continue
 
+                candidates += 1
+                candidate = final_output[hy:hy+h, hx:hx+w]
+
+                # Score: mean absolute difference in the BORDER region (the seam)
+                if has_border:
+                    diff  = cv2.absdiff(ref_region, candidate).astype(np.float32)
+                    score = float(diff[border_mask].mean())
+                else:
+                    score = 0.0   # no border to compare — any patch is equivalent
+
+                if score < best_score:
+                    best_score = score
+                    best_roi   = candidate.copy()
+
+            # ==========================================
+            # CLONE + SHARPEN
+            # ==========================================
+            healed = False
+
+            if best_roi is not None:
                 try:
-                    # Harvest the clean texture
-                    clean_roi = image[hy:hy+h, hx:hx+w]
-                    
-                    # NORMAL_CLONE perfectly stitches the clean fibers over the impurity
+                    # Clamp center so seamlessClone never goes out of bounds
+                    cx = int(np.clip(x + w // 2, w // 2 + 1, w_img - w // 2 - 1))
+                    cy = int(np.clip(y + h // 2, h // 2 + 1, h_img - h // 2 - 1))
+
                     final_output = cv2.seamlessClone(
-                        clean_roi, final_output, patch_mask, 
-                        (x + w//2, y + h//2), cv2.NORMAL_CLONE
+                        best_roi, final_output, patch_mask,
+                        (cx, cy), cv2.NORMAL_CLONE
                     )
+
+                    # --- Targeted sharpening inside the healed zone only ---
+                    healed_region = final_output[y:y+h, x:x+w].copy()
+                    sharpened     = cv2.filter2D(healed_region, -1, SHARPEN_KERNEL)
+                    sharpened     = np.clip(sharpened, 0, 255).astype(np.uint8)
+
+                    alpha = (patch_mask / 255.0)[..., np.newaxis]   # (h, w, 1)
+                    blended = (sharpened * alpha + healed_region * (1.0 - alpha)).astype(np.uint8)
+                    final_output[y:y+h, x:x+w] = blended
+
                     healed = True
                     successfully_removed += 1
+
                 except Exception:
                     pass
 
-            # Fallback to inpainting ONLY if harvesting fails on tiny nests
+            # ==========================================
+            # FALLBACK: Inpaint (stronger radius than before)
+            # ==========================================
             if not healed:
                 inpaint_mask = np.zeros_like(binary_mask)
                 inpaint_mask[y:y+h, x:x+w] = patch_mask
-                inpaint_mask = cv2.dilate(inpaint_mask, np.ones((5, 5), np.uint8), iterations=1)
-                final_output = cv2.inpaint(final_output, inpaint_mask, 3, cv2.INPAINT_TELEA)
+                inpaint_mask = cv2.dilate(inpaint_mask, np.ones((5, 5), np.uint8), iterations=2)
+                final_output = cv2.inpaint(final_output, inpaint_mask, 5, cv2.INPAINT_TELEA)
                 successfully_removed += 1
 
         print(f"\nSummary: Successfully removed {successfully_removed}/{len(contours)} impurities")
         return final_output
-    
+
 if __name__ == "__main__": 
     import matplotlib.pyplot as plt
     import cv2

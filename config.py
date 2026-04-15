@@ -3,6 +3,7 @@ import torch
 
 # Paths
 MODEL_PATH = "models/bests.pt"
+# MODEL_PATH = "models/best_remove_noise.pt"
 DATASET_GENERATED = Path("dataset_generated")
 DATASET_RETRAIN = Path("dataset_retrain")
 DATASET_HITL = Path("dataset_hitl")

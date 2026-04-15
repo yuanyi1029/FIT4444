@@ -62,38 +62,4 @@ def generate_saliency(torch_model, image_path, target_class_idx=None):
         return None, None
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    from inference import load_model  # Import your helper from the other file
-    
-    # 1. Load Model
-    MODEL_PATH = "models/bests.pt"  # Ensure this path is correct
-    print("Loading model...")
-    _, torch_model = load_model(MODEL_PATH)
-    
-    if torch_model:
-        # 2. Define Test Image
-        TEST_IMAGE = "dataset_hitl/unlabeled/(0)_LightFeather-2-_bmp_jpg.rf.8ac680312c062df4f2563f22d241e296.jpg"
-        
-        # 3. Generate Saliency
-        print(f"Generating Saliency for {TEST_IMAGE}...")
-        overlay, raw_heat = generate_saliency(torch_model, TEST_IMAGE)
-        
-        if overlay is not None:
-            # 4. Show Result
-            plt.figure(figsize=(10, 5))
-            
-            plt.subplot(1, 2, 1)
-            plt.imshow(overlay)
-            plt.title("Grad-CAM Overlay")
-            plt.axis('off')
-            
-            plt.subplot(1, 2, 2)
-            plt.imshow(raw_heat, cmap='jet')
-            plt.title("Raw Heatmap")
-            plt.axis('off')
-            
-            plt.tight_layout()
-            plt.show()
-            print("✅ Test Complete!")
-        else:
-            print("❌ Failed to generate visualization.")
+    pass
