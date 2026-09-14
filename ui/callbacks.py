@@ -73,7 +73,6 @@ def create_callbacks(pipeline: HITLPipeline):
             original_image, original_path, current_grade, editor_data 
         )
         
-        # Annotation Check
         is_annotated = False
         grade_changed = (original_grade != current_grade) if original_grade else False
 
@@ -89,7 +88,6 @@ def create_callbacks(pipeline: HITLPipeline):
         elif not grade_changed and is_annotated:
             gr.Info("Right for Wrong Reasons (Explanation Correction)")
 
-        # Simply return the list of output dictionaries to update the State
         return outputs 
 
     def save_process(current_data):
@@ -98,7 +96,6 @@ def create_callbacks(pipeline: HITLPipeline):
             gr.Warning("No data to save.")
             return current_data
 
-        # Extract the labels dynamically from the State data
         labels = [item["label"] for item in current_data]
 
         saved_count = pipeline.save_corrections(current_data, labels)
@@ -121,7 +118,7 @@ def create_callbacks(pipeline: HITLPipeline):
                 current_queue, 
                 gr.update(value="**Queue:** 0 images left"), 
                 *predict_empties, 
-                [] # Return empty list to clear generated_st
+                [] 
             )
 
         next_item = current_queue.pop(0)
@@ -133,7 +130,7 @@ def create_callbacks(pipeline: HITLPipeline):
             current_queue,
             gr.update(value=f"**Queue:** {remaining} images left"),
             *ui_updates,
-            [] # Return empty list to clear generated_st for the next image
+            []
         )
 
     def finetune_process(): 

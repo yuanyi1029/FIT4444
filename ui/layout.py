@@ -11,10 +11,6 @@ def create_layout(callbacks):
                     f"""
                     # CAIPI Framework 
                     ### Loaded Model: `{os.path.basename(MODEL_PATH)}`
-                    Accuracy: **0.7639**<br>
-                    Precision: **0.7654**<br>
-                    Recall: **0.7649**<br>
-                    F1 Score: **0.7635**<br> 
                     """
                 )
 
@@ -23,18 +19,15 @@ def create_layout(callbacks):
                     finetune_btn = gr.Button("Finetune Model", variant="primary")
                     clear_btn = gr.Button("Clear Dataset", variant="stop")
 
-        # --- Global States ---
+        # Global states
         original_grd = gr.State()
         original_img = gr.State()
-        generated_st = gr.State([]) # Initialize as empty list
+        generated_st = gr.State([]) 
         
-        # --- Active Learning States ---
+        # Active learning states
         session_queue = gr.State([])      
         original_pth = gr.State("")   
  
-        # ==========================================
-        # ROW 1: Files Upload and Session Control
-        # ==========================================
         with gr.Row():
             with gr.Column():
                 folder_uploader = gr.File(
@@ -49,10 +42,6 @@ def create_layout(callbacks):
                 
                 queue_status = gr.Markdown("**Queue:** 0 images ready", visible=False)
 
-        # ==========================================
-        # ROW 2: Prediction & Visualizations 
-        # ==========================================
-        # gr.Markdown("## Model Predictions")
         with gr.Row():
             with gr.Column(scale=5):
                 gr.Markdown("## Model Predictions")
@@ -70,9 +59,6 @@ def create_layout(callbacks):
         with gr.Row():
             output_txt = gr.Textbox(label="Model Prediction", lines=4)
             
-        # ==========================================
-        # ROW 3: Image Annotation (Correction Tools)
-        # ==========================================
         with gr.Row():
             with gr.Column(visible=False) as editor_container: 
                 gr.Markdown("## Annotation Tools")
@@ -90,19 +76,15 @@ def create_layout(callbacks):
                 )
                 gen_btn = gr.Button("Generate Counterexamples", variant="stop") 
 
-        # We group these outputs now so they can be referenced inside the render block
         predict_outputs = [
             original_img, original_grd, original_pth, output_txt, output_img, 
             output_map, output_seg, editor_container, img_editor, grade_dd
         ]
 
-        # ==========================================
-        # ROW 4: Dynamic Counterexamples via Rendering
-        # ==========================================
         @gr.render(inputs=generated_st)
         def render_counterexamples(data):
             if not data:
-                return # Renders nothing (hiding the row) if state is empty
+                return 
 
             with gr.Row(): 
                 for i, item in enumerate(data): 
@@ -115,9 +97,8 @@ def create_layout(callbacks):
                             interactive=True
                         )
                         
-                        # When a dropdown changes, we update the specific item in the state
                         def update_grade(new_grade, index=i):
-                            new_data = list(data) # List copy forces state change recognition
+                            new_data = list(data) 
                             new_data[index]["label"] = new_grade
                             return new_data
 
@@ -125,8 +106,6 @@ def create_layout(callbacks):
                         
             with gr.Row():
                 save_btn = gr.Button("Save & Next", variant="primary")
-                
-                # The save button is dynamically bound whenever the UI rebuilds
                 save_btn.click(
                     fn=lambda: gr.Button("Saving...", interactive=False),
                     inputs=None,
@@ -141,10 +120,6 @@ def create_layout(callbacks):
                     inputs=[session_queue],
                     outputs=[session_queue, queue_status] + predict_outputs + [generated_st]
                 )
-
-        # ==========================================
-        # EVENT WIRING (Connecting static UI to Logic)
-        # ==========================================
 
         # 1. Active Learning Initialization
         start_session_btn.click(
@@ -210,6 +185,7 @@ def create_layout(callbacks):
             outputs=clear_btn
         )
 
+        # 5. Skip image
         skip_btn.click(
             fn=lambda: gr.Button("Skipping...", interactive=False),
             inputs=None,

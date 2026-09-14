@@ -8,15 +8,12 @@ import torch
 
 def load_model(model_path):
     try:
-        # Standard yolo model 
         model = YOLO(model_path)
 
-        # Pytorch model (for GradCam) 
         torch_model = copy.deepcopy(model.model)
         device = torch.device(DEVICE)
         torch_model.to(device)
         
-        # Unfreeze gradients (Crucial for Grad-CAM!)
         for param in torch_model.parameters():
             param.requires_grad = True
         torch_model.eval()
@@ -41,7 +38,6 @@ def predict_image(model, image_path):
         elif isinstance(image_path, (str, Path)):
             filename = Path(image_path).name
 
-        # Unsupported image  
         else:
             raise ValueError("Unsupported image source type")
         
@@ -83,14 +79,13 @@ def test_model(model):
         seed=SEED, 
         deterministic=True,
         device=GPU_ID,
-        # device="cpu"
     )
 
     cm = metrics.confusion_matrix.matrix
     if not isinstance(cm, np.ndarray):
         cm = np.array(cm)
     
-    # Calculate per-class metrics
+    # Calculate metrics
     tp = np.diag(cm)
     fp = np.sum(cm, axis=0) - tp
     fn = np.sum(cm, axis=1) - tp
@@ -100,11 +95,11 @@ def test_model(model):
     recall = tp / (tp + fn + eps)
     f1 = 2 * (precision * recall) / (precision + recall + eps)
     
-    # NEW: Filter for classes that actually exist in the test ground truth
+    # Filter for classes that exist in the test ground truth
     ground_truth_counts = np.sum(cm, axis=1)
     present_classes = ground_truth_counts > 0
     
-    # Calculate macro averages ONLY for the present classes
+    # Calculate macro averages for the present classes
     macro_precision = np.mean(precision[present_classes])
     macro_recall = np.mean(recall[present_classes])
     macro_f1 = np.mean(f1[present_classes])

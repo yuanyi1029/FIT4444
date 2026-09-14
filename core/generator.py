@@ -1,17 +1,13 @@
 import numpy as np
 import cv2
-from ultralytics import FastSAM, SAM
-import random
 from rembg import remove
 from PIL import Image
-import torch 
-from tqdm import tqdm
 from config import * 
 
 class Generator: 
 
     def __init__(self): 
-        self.segment_model = FastSAM('FastSAM-s.pt')
+        pass 
 
     def get_mask(self, image): 
         if isinstance(image, str):
@@ -116,38 +112,32 @@ class Generator:
               
         output = image.copy()
         
-        # 1. Convert to LAB color space 
+        # Convert color space 
         lab = cv2.cvtColor(output, cv2.COLOR_RGB2LAB)
         l_channel, a_channel, b_channel = cv2.split(lab)
         
-        # 2. Apply CLAHE strictly to the Lightness (L) channel
+        # Apply CLAHE to L channel
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
         cl = clahe.apply(l_channel)
         
-        # 3. Merge channels back and convert to RGB
+        # Merge channels back and convert to RGB
         merged_lab = cv2.merge((cl, a_channel, b_channel))
         enhanced_img = cv2.cvtColor(merged_lab, cv2.COLOR_LAB2RGB)
         
-        # A. Create a "lighting map" by heavily blurring the L channel
+        # Create a lighting map by blurring L channel
         local_bg = cv2.GaussianBlur(l_channel, (31, 31), 0)
         
-        # B. Identify impurities (Lowered to 5 to catch more faint edges)
+        # Identify impurities
         impurity_mask = l_channel < (local_bg - 5)
-        
-        # C. Intersect the user's brush mask WITH the impurity mask
-        # We convert it to uint8 (0 or 255) so OpenCV can process it
         targeted_mask = (binary_mask & impurity_mask).astype(np.uint8) * 255
-        
-        # D. NEW: Thicken the impurities! (Morphological Dilation)
-        # A 3x3 kernel expands the dark spots slightly. 
-        # Change iterations=2 if you want them even thicker!
+    
         kernel = np.ones((3, 3), np.uint8)
         thickened_mask = cv2.dilate(targeted_mask, kernel, iterations=1)
         
-        # 4. Expand the 2D mask to 3D so it maps to RGB channels
+        # Expand 2D mask to 3D
         mask_3d = (thickened_mask > 0)[:, :, np.newaxis]
-        
-        # 5. Blend: Apply enhanced pixels ONLY to the thickened dark spots
+
+        # Apply enhanced pixels ONLY to the thickened dark spots
         output = np.where(mask_3d, enhanced_img, output)
          
         return output
@@ -168,13 +158,12 @@ class Generator:
         final_output = image.copy()
         successfully_removed = 0
 
-        # Sharpening kernel — mild, preserves structure without ringing
         SHARPEN_KERNEL = np.array([[ 0,  -0.5,  0],
                                     [-0.5,  3, -0.5],
                                     [ 0,  -0.5,  0]], dtype=np.float32)
 
-        NUM_CANDIDATES   = 25   # how many clean patches to evaluate before picking the best
-        MAX_ATTEMPTS     = 400  # upper bound on random sampling tries
+        NUM_CANDIDATES = 25   
+        MAX_ATTEMPTS = 400  
 
         for contour in contours:
             if cv2.contourArea(contour) < 10:
@@ -182,20 +171,15 @@ class Generator:
 
             x, y, w, h = cv2.boundingRect(contour)
 
-            # --- Build patch mask & dilate for stronger edge coverage ---
             source_mask = binary_mask[y:y+h, x:x+w]
             patch_mask  = np.zeros((h, w), dtype=np.uint8)
             patch_mask[source_mask > 0] = 255
             patch_mask = cv2.dilate(patch_mask, np.ones((3, 3), np.uint8), iterations=2)
 
-            # Reference: what the border of this region looks like right now
             ref_region   = final_output[y:y+h, x:x+w]
-            border_mask  = patch_mask == 0          # pixels OUTSIDE the impurity (the seam zone)
+            border_mask  = patch_mask == 0
             has_border   = border_mask.any()
 
-            # ==========================================
-            # BEST-MATCH PATCH HARVESTING
-            # ==========================================
             best_score  = float('inf')
             best_roi    = None
             candidates  = 0
@@ -210,32 +194,26 @@ class Generator:
                 zone_slice = valid_zone[hy:hy+h, hx:hx+w]
                 if zone_slice.shape != patch_mask.shape:
                     continue
-                # Reject if any impurity pixel in the patch falls outside the valid zone
                 if np.any((patch_mask > 0) & (zone_slice == 0)):
                     continue
 
                 candidates += 1
                 candidate = final_output[hy:hy+h, hx:hx+w]
 
-                # Score: mean absolute difference in the BORDER region (the seam)
                 if has_border:
                     diff  = cv2.absdiff(ref_region, candidate).astype(np.float32)
                     score = float(diff[border_mask].mean())
                 else:
-                    score = 0.0   # no border to compare — any patch is equivalent
+                    score = 0.0   
 
                 if score < best_score:
                     best_score = score
                     best_roi   = candidate.copy()
 
-            # ==========================================
-            # CLONE + SHARPEN
-            # ==========================================
             healed = False
 
             if best_roi is not None:
                 try:
-                    # Clamp center so seamlessClone never goes out of bounds
                     cx = int(np.clip(x + w // 2, w // 2 + 1, w_img - w // 2 - 1))
                     cy = int(np.clip(y + h // 2, h // 2 + 1, h_img - h // 2 - 1))
 
@@ -244,7 +222,6 @@ class Generator:
                         (cx, cy), cv2.NORMAL_CLONE
                     )
 
-                    # --- Targeted sharpening inside the healed zone only ---
                     healed_region = final_output[y:y+h, x:x+w].copy()
                     sharpened     = cv2.filter2D(healed_region, -1, SHARPEN_KERNEL)
                     sharpened     = np.clip(sharpened, 0, 255).astype(np.uint8)
@@ -259,9 +236,7 @@ class Generator:
                 except Exception:
                     pass
 
-            # ==========================================
-            # FALLBACK: Inpaint (stronger radius than before)
-            # ==========================================
+            # Fallback
             if not healed:
                 inpaint_mask = np.zeros_like(binary_mask)
                 inpaint_mask[y:y+h, x:x+w] = patch_mask
@@ -277,18 +252,12 @@ if __name__ == "__main__":
     import cv2
     import numpy as np
     
-    # 1. Setup
-    # TEST_IMAGE = "dataset_hitl/unlabeled/(0)_LightFeather-2-_bmp_jpg.rf.8ac680312c062df4f2563f22d241e296.jpg"
     TEST_IMAGE = "dataset_hitl/unlabeled/(1)_Beige-11-_bmp_jpg.rf.8ee90c21ea247658ed3f151fd0ac5db8.jpg"
     
-    # 2. Load
     image_bgr = cv2.imread(TEST_IMAGE)
     
     if image_bgr is not None:
         gen = Generator()
-
-        # --- A. Test Background Noise ---
-        # Create Dummy Mask (200x200 square)
         h, w = image_bgr.shape[:2]
         dummy_mask = np.zeros((h, w), dtype=np.uint8)
         cv2.rectangle(dummy_mask, (100, 100), (300, 300), 255, thickness=cv2.FILLED)
@@ -296,20 +265,15 @@ if __name__ == "__main__":
         result_bgr = gen.background_noise(image_bgr, dummy_mask)
         result_rgb = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
 
-        # --- B. Test Get Mask ---
-        # Generate the nest mask from the original image
         generated_mask = gen.get_mask(image_bgr)
 
-        # --- C. Display Side-by-Side ---
         plt.figure(figsize=(12, 6))
 
-        # Plot 1: Noise Result
         plt.subplot(1, 2, 1)
         plt.imshow(result_rgb)
         plt.title("Result: Background Noise Applied")
         plt.axis('off')
 
-        # Plot 2: Generated Mask
         plt.subplot(1, 2, 2)
         plt.imshow(generated_mask, cmap='gray')
         plt.title("Result: Generated Nest Mask")
